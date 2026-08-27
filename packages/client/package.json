@@ -1,0 +1,21 @@
+{
+  "name": "@workbench/client",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Browser-side Firebase setup and the Firebase implementation of the auth port.",
+  "license": "UNLICENSED",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@workbench/core": "workspace:*"
+  },
+  "peerDependencies": {
+    "firebase": "^12.0.0"
+  },
+  "devDependencies": {
+    "firebase": "^12.17.1"
+  }
+}

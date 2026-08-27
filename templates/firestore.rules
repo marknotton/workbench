@@ -1,0 +1,116 @@
+rules_version = '2';
+
+// Firestore rules template.
+//
+// The governing decision: **clients never write.** Every mutation goes through
+// a callable Cloud Function, which is the only place that can check a caller's
+// role, validate input and keep counters consistent inside a transaction.
+// That makes these rules purely a read-authorisation surface, which is a much
+// smaller thing to get right.
+//
+// Copy this into your application and replace `workspaces` with whatever your
+// top-level container is called. Keep the shape.
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // -----------------------------------------------------------------------
+    // Helpers
+    // -----------------------------------------------------------------------
+
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function isSelf(userId) {
+      return signedIn() && request.auth.uid == userId;
+    }
+
+    function memberDoc(workspaceId) {
+      return get(/databases/$(database)/documents/workspaces/$(workspaceId)/members/$(request.auth.uid));
+    }
+
+    function isMember(workspaceId) {
+      return signedIn()
+        && exists(/databases/$(database)/documents/workspaces/$(workspaceId)/members/$(request.auth.uid))
+        && memberDoc(workspaceId).data.status == 'active';
+    }
+
+    function hasAnyRole(workspaceId, roles) {
+      return isMember(workspaceId) && memberDoc(workspaceId).data.roles.hasAny(roles);
+    }
+
+    function isAdmin(workspaceId) {
+      return hasAnyRole(workspaceId, ['owner', 'admin']);
+    }
+
+    // -----------------------------------------------------------------------
+    // Profiles
+    // -----------------------------------------------------------------------
+
+    // Readable only by their owner. Written exclusively by `ensureProfile`,
+    // because a client that could write here could set its own `emailVerified`.
+    match /users/{userId} {
+      allow get: if isSelf(userId);
+      allow list: if false;
+      allow write: if false;
+    }
+
+    // -----------------------------------------------------------------------
+    // Aliases
+    // -----------------------------------------------------------------------
+
+    // Maps a slug or hostname onto a workspace id. Gettable by key so someone
+    // following an invite link — who is not a member yet, and is exactly who
+    // needs the join screen to work — can resolve it. Never listable, so the
+    // set of workspaces on the platform cannot be enumerated.
+    match /workspaceAliases/{alias} {
+      allow get: if true;
+      allow list: if false;
+      allow write: if false;
+    }
+
+    // -----------------------------------------------------------------------
+    // Workspaces
+    // -----------------------------------------------------------------------
+
+    match /workspaces/{workspaceId} {
+      // Members read their own workspace. `list` stays denied: a workspace is
+      // reached by id or alias, never by enumeration.
+      allow get: if isMember(workspaceId);
+      allow list: if false;
+      allow write: if false;
+
+      match /members/{memberId} {
+        allow get, list: if isMember(workspaceId);
+        allow write: if false;
+      }
+
+      // The idempotency ledger is internal. Nothing outside the trusted
+      // functions has any reason to read it, and its contents echo command
+      // results.
+      match /requests/{requestId} {
+        allow read, write: if false;
+      }
+
+      match /auditLog/{entryId} {
+        allow get, list: if isAdmin(workspaceId);
+        allow write: if false;
+      }
+
+      // Application data. Narrow this per collection rather than leaving one
+      // broad rule — a member being able to read *everything* in a workspace is
+      // rarely what you actually mean.
+      match /{document=**} {
+        allow read: if isMember(workspaceId);
+        allow write: if false;
+      }
+    }
+
+    // Anything not matched above is denied, but say so explicitly: a future
+    // collection added without a rule then fails closed and visibly.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

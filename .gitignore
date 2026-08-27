@@ -1,0 +1,43 @@
+# dependencies
+node_modules/
+.yarn/*
+!.yarn/patches
+!.yarn/plugins
+!.yarn/releases
+!.yarn/versions
+.pnp.*
+
+# build output
+dist/
+*.tsbuildinfo
+
+# environment — never commit real values
+.env
+.env.local
+.env.*.local
+
+# tooling
+coverage/
+.DS_Store
+
+# firebase
+firestore-debug.log
+firebase-debug.log
+ui-debug.log
+.firebase/
+
+# credentials — never commit these
+# A service-account key grants full admin access and bypasses Security Rules
+# entirely. These patterns are a backstop; a key that never enters the working
+# tree cannot be committed by a typo.
+*serviceAccount*.json
+*service-account*.json
+*-firebase-adminsdk-*.json
+gcloud-key*.json
+sa-key*.json
+*credentials*.json
+*-key.json
+key.json
+admin.json
+*.pem
+*.p12

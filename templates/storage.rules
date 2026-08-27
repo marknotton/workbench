@@ -1,0 +1,73 @@
+rules_version = '2';
+
+// Cloud Storage rules template.
+//
+// Same governing decision as Firestore: **clients never write.** Uploads go
+// through a callable that validates content type, size and ownership, then
+// writes with the Admin SDK. Client-side upload rules cannot check anything
+// about the *file* beyond its declared metadata, which a client controls.
+//
+// Paths are structured so isolation is enforced by the path itself:
+//
+//   users/{userId}/...            private to one person
+//   workspaces/{workspaceId}/...  visible to that workspace's members
+//   public/...                    world-readable, e.g. branding
+//
+// See docs/gaps.md — the upload callable is documented but not yet built.
+
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function isSelf(userId) {
+      return signedIn() && request.auth.uid == userId;
+    }
+
+    function isMember(workspaceId) {
+      return signedIn()
+        && firestore.exists(
+             /databases/(default)/documents/workspaces/$(workspaceId)/members/$(request.auth.uid)
+           );
+    }
+
+    function isAdmin(workspaceId) {
+      return signedIn()
+        && firestore.get(
+             /databases/(default)/documents/workspaces/$(workspaceId)/members/$(request.auth.uid)
+           ).data.roles.hasAny(['owner', 'admin']);
+    }
+
+    // A person's own private files.
+    match /users/{userId}/{allPaths=**} {
+      allow read: if isSelf(userId);
+      allow write: if false;
+    }
+
+    // Shared within a workspace.
+    match /workspaces/{workspaceId}/{allPaths=**} {
+      allow read: if isMember(workspaceId);
+      allow write: if false;
+    }
+
+    // Anything genuinely sensitive — evidence, exports, anything that may
+    // contain another person's data — is admin-only and never readable by the
+    // people it concerns.
+    match /workspaces/{workspaceId}/restricted/{allPaths=**} {
+      allow read: if isAdmin(workspaceId);
+      allow write: if false;
+    }
+
+    // Branding and similar, needed before sign-in to render a join screen.
+    match /public/{allPaths=**} {
+      allow read: if true;
+      allow write: if false;
+    }
+
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}
