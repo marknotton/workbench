@@ -9,14 +9,13 @@
   "exports": {
     ".": "./src/index.ts"
   },
-  "dependencies": {
-    "@workbench/core": "workspace:*"
-  },
   "peerDependencies": {
+    "@workbench/core": "^0.1.0",
     "firebase-admin": "^13.0.0",
     "firebase-functions": "^7.0.0"
   },
   "devDependencies": {
+    "@workbench/core": "workspace:*",
     "firebase-admin": "^13.10.0",
     "firebase-functions": "^7.3.2"
   }
