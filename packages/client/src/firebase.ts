@@ -99,8 +99,16 @@ export function createFirebase(config: FirebaseConfig): FirebaseHandles {
   } else if (config.appCheckSiteKey) {
     // Set before initialiseAppCheck, or the SDK has already decided.
     if (config.appCheckDebugToken) {
+      // `true` (the boolean) tells the SDK to mint a token and log it, which
+      // is how you obtain one to register. Any string is used as an existing
+      // token. Environment variables are always strings, so the literal
+      // "true" has to be coerced or it is treated as a token and silently
+      // fails attestation — leaving you with nothing to register.
+      const debugToken: string | boolean =
+        config.appCheckDebugToken === 'true' ? true : config.appCheckDebugToken;
+
       (globalThis as { FIREBASE_APPCHECK_DEBUG_TOKEN?: string | boolean }).
-        FIREBASE_APPCHECK_DEBUG_TOKEN = config.appCheckDebugToken;
+        FIREBASE_APPCHECK_DEBUG_TOKEN = debugToken;
     }
 
     initializeAppCheck(app, {
