@@ -85,6 +85,34 @@ export function createFirebase(config: FirebaseConfig): FirebaseHandles {
     appId: config.appId,
   });
 
+  // App Check FIRST — before getAuth, getFirestore or getFunctions.
+  //
+  // Each service picks up the App Check provider when it is created. Create
+  // one first and it never attaches an attestation header, so every request it
+  // makes is refused by an enforcing project: Authentication answers 403 "App
+  // attestation failed" and callables answer UNAUTHENTICATED. Nothing in the
+  // code looks wrong, and the credentials being used are perfectly valid.
+  if (!config.useEmulators && config.appCheckSiteKey) {
+    if (config.appCheckDebugToken) {
+      // `true` (the boolean) tells the SDK to mint a token and log it, which
+      // is how you obtain one to register. Any string is used as an existing
+      // token. Environment variables are always strings, so the literal
+      // "true" has to be coerced or it is treated as a token and silently
+      // fails attestation — leaving you with nothing to register.
+      const debugToken: string | boolean =
+        config.appCheckDebugToken === 'true' ? true : config.appCheckDebugToken;
+
+      // Must be set before initializeAppCheck, or the SDK has already decided.
+      (globalThis as { FIREBASE_APPCHECK_DEBUG_TOKEN?: string | boolean }).
+        FIREBASE_APPCHECK_DEBUG_TOKEN = debugToken;
+    }
+
+    initializeAppCheck(app, {
+      provider: new ReCaptchaV3Provider(config.appCheckSiteKey),
+      isTokenAutoRefreshEnabled: true,
+    });
+  }
+
   const auth = getAuth(app);
   const db = getFirestore(app);
   const functions = getFunctions(app, config.region ?? DEFAULT_FUNCTIONS_REGION);
@@ -96,25 +124,6 @@ export function createFirebase(config: FirebaseConfig): FirebaseHandles {
     connectFirestoreEmulator(db, '127.0.0.1', ports.firestore);
     connectFunctionsEmulator(functions, '127.0.0.1', ports.functions);
     connectStorageEmulator(storage, '127.0.0.1', ports.storage);
-  } else if (config.appCheckSiteKey) {
-    // Set before initialiseAppCheck, or the SDK has already decided.
-    if (config.appCheckDebugToken) {
-      // `true` (the boolean) tells the SDK to mint a token and log it, which
-      // is how you obtain one to register. Any string is used as an existing
-      // token. Environment variables are always strings, so the literal
-      // "true" has to be coerced or it is treated as a token and silently
-      // fails attestation — leaving you with nothing to register.
-      const debugToken: string | boolean =
-        config.appCheckDebugToken === 'true' ? true : config.appCheckDebugToken;
-
-      (globalThis as { FIREBASE_APPCHECK_DEBUG_TOKEN?: string | boolean }).
-        FIREBASE_APPCHECK_DEBUG_TOKEN = debugToken;
-    }
-
-    initializeAppCheck(app, {
-      provider: new ReCaptchaV3Provider(config.appCheckSiteKey),
-      isTokenAutoRefreshEnabled: true,
-    });
   }
 
   return { app, auth, db, functions, storage };
