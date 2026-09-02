@@ -52,6 +52,27 @@ service firebase.storage {
       allow write: if false;
     }
 
+    // Images, uploaded directly by the browser.
+    //
+    // This is the one place clients *do* write, and it is a deliberate
+    // exception to the rule that governs Firestore. There, rules cannot
+    // meaningfully validate a payload, so everything goes through a callable.
+    // Here they can: size and content type are both checkable, which covers
+    // what a callable would have added for a fraction of the machinery.
+    //
+    // The residual risk, stated plainly: `contentType` is declared by the
+    // client, so a determined uploader can store something that is not an
+    // image while claiming that it is. It cannot execute — Storage serves with
+    // Content-Disposition and from a separate origin — but if your uploads are
+    // open to strangers rather than invited members, validate the bytes in a
+    // callable instead.
+    match /workspaces/{workspaceId}/images/{fileName} {
+      allow read: if isMember(workspaceId);
+      allow write: if isMember(workspaceId)
+        && request.resource.size < 2 * 1024 * 1024
+        && request.resource.contentType.matches('image/(png|jpeg|webp|gif)');
+    }
+
     // Anything genuinely sensitive — evidence, exports, anything that may
     // contain another person's data — is admin-only and never readable by the
     // people it concerns.

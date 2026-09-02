@@ -22,3 +22,14 @@ export {
   type FirebaseAuthOptions,
   type ProfileCallableInput,
 } from './auth.js';
+
+export {
+  uploadImage,
+  prepareImage,
+  isImageUrl,
+  ImageError,
+  DEFAULT_IMAGE_CONSTRAINTS,
+  IMMUTABLE_CACHE,
+  type ImageConstraints,
+  type UploadResult,
+} from './images.js';
