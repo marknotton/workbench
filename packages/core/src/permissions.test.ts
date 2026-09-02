@@ -16,7 +16,9 @@ const permissions = createPermissions<Role, Capability>({
   member: ['read'],
 });
 
-function membership(overrides: Partial<BaseMembership<Role>> = {}): BaseMembership<Role> {
+function membership(
+  overrides: Partial<BaseMembership<Role, Capability>> = {},
+): BaseMembership<Role, Capability> {
   return { userId: 'usr_1', roles: ['member'], status: 'active', ...overrides };
 }
 
@@ -111,5 +113,79 @@ describe('an unknown role', () => {
   it('grants nothing rather than throwing, so stale data cannot escalate', () => {
     const stale = membership({ roles: ['ghost' as Role] });
     expect(permissions.memberCan(stale, 'read')).toBe(false);
+  });
+});
+
+describe('per-user grants — the moderator mechanism', () => {
+  it('adds a capability the roles do not give', () => {
+    const mod = membership({ roles: ['member'], grants: ['invite'] });
+    expect(permissions.memberCan(mod, 'invite')).toBe(true);
+    // And nothing else came with it.
+    expect(permissions.memberCan(mod, 'configure')).toBe(false);
+  });
+
+  it('lets two moderators hold different powers', () => {
+    const one = membership({ roles: ['member'], grants: ['invite'] });
+    const two = membership({ roles: ['member'], grants: ['configure'] });
+    expect(permissions.memberCan(one, 'invite')).toBe(true);
+    expect(permissions.memberCan(two, 'invite')).toBe(false);
+    expect(permissions.memberCan(two, 'configure')).toBe(true);
+  });
+
+  it('is additive only, so removing a power means removing the grant', () => {
+    const stripped = membership({ roles: ['member'], grants: [] });
+    expect(permissions.memberCan(stripped, 'read')).toBe(true);
+  });
+
+  it('does not rescue a suspended or removed membership', () => {
+    expect(
+      permissions.memberCan(
+        membership({ roles: ['member'], grants: ['configure'], status: 'suspended' }),
+        'configure',
+      ),
+    ).toBe(false);
+    expect(
+      permissions.memberCan(
+        membership({ roles: ['member'], grants: ['configure'], inviteStatus: 'removed' }),
+        'configure',
+      ),
+    ).toBe(false);
+  });
+
+  it('reports roles and grants together', () => {
+    const mod = membership({ roles: ['member'], grants: ['invite'] });
+    expect(permissions.capabilitiesForMember(mod).sort()).toEqual(['invite', 'read']);
+  });
+});
+
+describe('emulation only ever narrows', () => {
+  const owner = membership({ roles: ['owner'] });
+
+  it('limits an owner to what the emulated role holds', () => {
+    expect(permissions.memberCan(owner, 'configure')).toBe(true);
+    expect(permissions.memberCan(owner, 'configure', { emulateRole: 'member' })).toBe(false);
+    expect(permissions.memberCan(owner, 'read', { emulateRole: 'member' })).toBe(true);
+  });
+
+  it('cannot grant anything — the property the whole design rests on', () => {
+    // A member claiming to be an owner gains nothing, which is why the
+    // emulated role is safe to accept from the client.
+    const plain = membership({ roles: ['member'] });
+    expect(permissions.memberCan(plain, 'configure', { emulateRole: 'owner' })).toBe(false);
+    expect(permissions.can(['member'], 'configure', { emulateRole: 'owner' })).toBe(false);
+  });
+
+  it('narrows grants as well as roles', () => {
+    const mod = membership({ roles: ['member'], grants: ['invite'] });
+    expect(permissions.memberCan(mod, 'invite')).toBe(true);
+    expect(permissions.memberCan(mod, 'invite', { emulateRole: 'member' })).toBe(false);
+  });
+
+  it('reports the narrowed capability list', () => {
+    expect(permissions.capabilitiesForMember(owner, { emulateRole: 'member' })).toEqual(['read']);
+  });
+
+  it('is a no-op when no role is being emulated', () => {
+    expect(permissions.memberCan(owner, 'configure', {})).toBe(true);
   });
 });
